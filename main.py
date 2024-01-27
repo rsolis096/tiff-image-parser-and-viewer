@@ -6,18 +6,18 @@
 #python -m pip install -U matplotlib    #needed
 
 TYPES = {
-"1":  1,  #8-bit unsigned integer.
-"2" : 1,  # 8-bit byte that contains a 7-bit ASCII code; the last bytemust be NUL (binary zero).
-"3" : 2,  #16-bit (2-byte) unsigned integer.
-"4" : 4,  #32-bit (4-byte) unsigned integer
-"5" : 8,  #Two LONGs: the first represents the numerator of afraction; the second, the denominator
-"6" : 1,  #An 8-bit signed (twos-complement) integer.
-"7" : 1,  #An 8-bit byte that may contain anything, depending onthe definition of the field.
-"8" : 2,  #A 16-bit (2-byte) signed (twos-complement) integer.
-"9" : 4,  #A 32-bit (4-byte) signed (twos-complement) integer
-"10": 8,  #two signed longs, numerator and denominator
-"11": 4,  #FLOAT Single precision (4-byte) IEEE format.
-"12": 8  #DOUBLE Double precision (8-byte) IEEE format
+'1':  1,  #8-bit unsigned integer.
+'2' : 1,  # 8-bit byte that contains a 7-bit ASCII code; the last bytemust be NUL (binary zero).
+'3' : 2,  #16-bit (2-byte) unsigned integer.
+'4' : 4,  #32-bit (4-byte) unsigned integer
+'5' : 8,  #Two LONGs: the first represents the numerator of afraction; the second, the denominator
+'6' : 1,  #An 8-bit signed (twos-complement) integer.
+'7' : 1,  #An 8-bit byte that may contain anything, depending onthe definition of the field.
+'8' : 2,  #A 16-bit (2-byte) signed (twos-complement) integer.
+'9' : 4,  #A 32-bit (4-byte) signed (twos-complement) integer
+'10': 8,  #two signed longs, numerator and denominator
+'11': 4,  #FLOAT Single precision (4-byte) IEEE format.
+'12': 8  #DOUBLE Double precision (8-byte) IEEE format
 }
 
 
@@ -27,6 +27,7 @@ from PIL import Image, ImageDraw
 import tifffile
 import matplotlib.pyplot as plt
 import binascii #For hex stuff
+import math
 
 #Get meta data of tif file
 file_name = "test samples/Q2/image2.tif"
@@ -37,14 +38,12 @@ try:
 
         #Read Tiff file header
         tif_byte_order = file.read(2).decode('ascii') #Gives endian order
+        print(f"Byte Order: {tif_byte_order}")
 
         if tif_byte_order == 'MM':
             tif_byte_order = 'big'
         elif tif_byte_order == 'II':
             tif_byte_order = 'little'
-
-        #Big: MSB first
-        #Little: LSB first
             
         #Get Header ID (always 42)
         tif_id_42 = int.from_bytes(file.read(2), byteorder=tif_byte_order)
@@ -63,6 +62,9 @@ try:
         strip_offsets = []
         strip_byte_counts = []
 
+        # Define the dimensions of the image
+        width = 0
+        height = 0
 
         for i in range(number_of_directory_entries):
             #Directory Entry i
@@ -75,19 +77,29 @@ try:
             current_position = file.tell()
 
             #Determine if the values chunk contains a value or an offset then perform read
-            if (TYPES[str(entry_type)] * entry_count) < 4: #Contains a value
+            if (TYPES[str(entry_type)] * entry_count) <= 4: #Contains a value
                 entry_value.append( int.from_bytes(file.read(TYPES[str(entry_type)] * entry_count), byteorder=tif_byte_order))
-                file.read(4 - TYPES[str(entry_type)] * entry_count)
+                file.read(4 - (TYPES[str(entry_type)] * entry_count))
             else: #Contains an offset
                 value_offset = int.from_bytes(file.read(4), byteorder=tif_byte_order)
                 file.seek(value_offset)
                 for j in range(entry_count):
                     entry_value.append(int.from_bytes(file.read(TYPES[str(entry_type)]), byteorder=tif_byte_order))
                 file.seek(current_position + 4)
-                print(entry_tag)
-                if entry_tag == 273:
+
+            
+            #Get Important Image information. There are many other tags but these are the most important  
+            match entry_tag:
+                case 256:
+                    width = entry_value[0]
+                case 257:
+                    height = entry_value[0]
+                #This specifies the position (offset) of the start of the image data, the rgb values. This can be a single offset or a list of offsets
+                case 273:
+                    strip_offsets_count = entry_count
                     strip_offsets = entry_value
-                if entry_tag == 279:
+                #This specifies the quanitity of bytes of image data per offset
+                case 279:
                     strip_byte_counts = entry_value
 
             print(f"\nDirectory Entry {i}")
@@ -96,14 +108,17 @@ try:
             print(f"Count: {entry_count}")
             print(f"Value: {entry_value}")
 
-        file.read()
-        entry_value.append( int.from_bytes(file.read(TYPES[str(entry_type)] * entry_count), byteorder=tif_byte_order))
-        #np.flip(strip_offsets)
-        #np.flip(strip_byte_counts)
-        print("\nStrip info")
-        print(f"Offsets: {strip_offsets}")
-        print(f"Byte Counts: {strip_byte_counts}")
+        #Initialize rgb_values list (holds lists of [r,g,b] values)
         rgb_values = []
+
+        pixel_rows = []
+
+        # IMPORTANT: THIS FOR LOOP READS IMAGE DATA IN COLUMN ORDER
+        # This means it starts at column 1, reads it, then moves to column 2
+        temp = width
+        width = height
+        height = temp
+
         #Go to the image data
         for i in range(len(strip_offsets)):
             file.seek(strip_offsets[i])
@@ -111,44 +126,43 @@ try:
                 rgb_pixel = []
                 rgb_pixel.append(int.from_bytes(file.read(1), byteorder=tif_byte_order))
                 rgb_pixel.append(int.from_bytes(file.read(1), byteorder=tif_byte_order))
-                rgb_pixel.append(int.from_bytes(file.read(1), byteorder=tif_byte_order))
-                rgb_values.append(rgb_pixel)
+                rgb_pixel.append(int.from_bytes(file.read(1), byteorder=tif_byte_order))              
+                if j < 25:
+                    rgb_values.append([0,255,0])
+                else:
+                    rgb_values.append(rgb_pixel)
 
-        rgb_values.append([0,0,0])
+        #Image Data Location/Quanitity info
+        print("\nStrip info")
+        print(f"Offsets: {strip_offsets}")
+        print(f"Byte Counts: {strip_byte_counts}")
 
+        #Initialize image in the form of a matrix that holds lists [r,g,b] in the same order as the actual image
         image_matrix = []
 
-                # Define the dimensions of the image
-        height = 294
-        width = 241
-
-        print(len(rgb_values))
+        #Transform the 1D array of lists { [r,g,b], [r,g,b], ... }, to a 2D matrix
         counter = 0
         for i in range(width):
             image_matrix.append([])
             for j in range(height):
-                #print(counter)
                 image_matrix[i].append(rgb_values[counter])
                 counter += 1
 
-
-                
-
-
-
-        # Create a new image with a white background
+        # Create a new image with a white background (this is the actual image representation that will be viewed)
         image = Image.new("RGB", (width, height), "white")
 
-        # Access the pixel data
+        # Access the new images pixel data
         pixels = image.load()
 
-        # Draw a red rectangle
+        # Draw the rgb values from image_matrix
         for x in range(width):
             for y in range(height):
                 pixels[x, y] = (image_matrix[x][y][0], image_matrix[x][y][1], image_matrix[x][y][2])  # RGB value for red
 
-        # Save or display the image
-        image.save("output_image.png")
+        #Transpose (this is do the the way the data is set up during the read)
+        #image = image.transpose(method = Image.Transpose.ROTATE_90)
+
+        # Display the image
         image.show()
         
 
