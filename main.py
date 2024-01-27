@@ -24,13 +24,11 @@ TYPES = {
 import PySimpleGUI as sg
 import numpy as np
 from PIL import Image, ImageDraw
-import tifffile
 import matplotlib.pyplot as plt
-import binascii #For hex stuff
-import math
+
 
 #Get meta data of tif file
-file_name = "test samples/Q2/image2.tif"
+file_name = "test samples/Q2/image1.tif"
 
 try:
     # Open the TIFF file (https://www.itu.int/itudoc/itu-t/com16/tiff-fx/docs/tiff6.pdf)
@@ -118,6 +116,12 @@ try:
         temp = width
         width = height
         height = temp
+
+        #IMPORTANT
+        #This nested for loop reads the image starting at the top right row and working left, then proceeding to the right of the next row and so on
+        #Each width# of iterations of the inner loop generates one "row" in reverse order (from right to left)
+        #Due to the way strip_offset works and the corresponding count for tag 273, a nested for loop is necessary.
+        #Counters can be used to compensate for this issue
 
         #Go to the image data
         for i in range(len(strip_offsets)):
