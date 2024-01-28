@@ -23,14 +23,14 @@ TYPES = {
 
 import PySimpleGUI as sg
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageTk, ImageDraw, ImageFont
 import matplotlib.pyplot as plt
+import io
+import base64
 
 
-#Get meta data of tif file
-file_name = "test samples/Q2/image1.tif"
 
-try:
+def read_image(file_name):
     # Open the TIFF file (https://www.itu.int/itudoc/itu-t/com16/tiff-fx/docs/tiff6.pdf)
     with open(file_name, 'rb') as file:
 
@@ -54,7 +54,7 @@ try:
 
         #Get number of directories 
         number_of_directory_entries = int.from_bytes(file.read(2), byteorder=tif_byte_order)
-        print(f"Number of Directory Entries: {number_of_directory_entries}")
+        #print(f"Number of Directory Entries: {number_of_directory_entries}")
 
         #This data points to the image data
         strip_offsets = []
@@ -94,7 +94,6 @@ try:
                     height = entry_value[0]
                 #This specifies the position (offset) of the start of the image data, the rgb values. This can be a single offset or a list of offsets
                 case 273:
-                    strip_offsets_count = entry_count
                     strip_offsets = entry_value
                 #This specifies the quanitity of bytes of image data per offset
                 case 279:
@@ -111,8 +110,7 @@ try:
 
         pixel_rows = []
 
-        # IMPORTANT: THIS FOR LOOP READS IMAGE DATA IN COLUMN ORDER
-        # This means it starts at column 1, reads it, then moves to column 2
+        #The method of file reading flips the image in a weird way. Swapping dimensions then transposing the image fixes this
         temp = width
         width = height
         height = temp
@@ -121,7 +119,6 @@ try:
         #This nested for loop reads the image starting at the top right row and working left, then proceeding to the right of the next row and so on
         #Each width# of iterations of the inner loop generates one "row" in reverse order (from right to left)
         #Due to the way strip_offset works and the corresponding count for tag 273, a nested for loop is necessary.
-        #Counters can be used to compensate for this issue
 
         #Go to the image data
         for i in range(len(strip_offsets)):
@@ -131,15 +128,12 @@ try:
                 rgb_pixel.append(int.from_bytes(file.read(1), byteorder=tif_byte_order))
                 rgb_pixel.append(int.from_bytes(file.read(1), byteorder=tif_byte_order))
                 rgb_pixel.append(int.from_bytes(file.read(1), byteorder=tif_byte_order))              
-                if j < 25:
-                    rgb_values.append([0,255,0])
-                else:
-                    rgb_values.append(rgb_pixel)
+                rgb_values.append(rgb_pixel)
 
         #Image Data Location/Quanitity info
-        print("\nStrip info")
-        print(f"Offsets: {strip_offsets}")
-        print(f"Byte Counts: {strip_byte_counts}")
+        #print("\nStrip info")
+        #print(f"Offsets: {strip_offsets}")
+        #print(f"Byte Counts: {strip_byte_counts}")
 
         #Initialize image in the form of a matrix that holds lists [r,g,b] in the same order as the actual image
         image_matrix = []
@@ -153,10 +147,10 @@ try:
                 counter += 1
 
         # Create a new image with a white background (this is the actual image representation that will be viewed)
-        image = Image.new("RGB", (width, height), "white")
+        im = Image.new("RGB", (width, height), "white")
 
         # Access the new images pixel data
-        pixels = image.load()
+        pixels = im.load()
 
         # Draw the rgb values from image_matrix
         for x in range(width):
@@ -164,89 +158,91 @@ try:
                 pixels[x, y] = (image_matrix[x][y][0], image_matrix[x][y][1], image_matrix[x][y][2])  # RGB value for red
 
         #Transpose (this is do the the way the data is set up during the read)
-        #image = image.transpose(method = Image.Transpose.ROTATE_90)
+        im = im.transpose(method = Image.Transpose.ROTATE_270)
 
-        # Display the image
-        image.show()
-        
+    return im
 
+# Create a placeholder image
+placeholder_text = "Image will appear here"
+placeholder_image = Image.new("RGB", (300, 200), (44,40,37))
+draw = ImageDraw.Draw(placeholder_image)
+draw.text((50, 100), placeholder_text, fill='white', font_size=20)
 
-        
+# Convert the placeholder image to bytes
+placeholder_bytes = io.BytesIO()
+placeholder_image.save(placeholder_bytes, format='PNG')
+placeholder_bytes = placeholder_bytes.getvalue()
 
+#Setup GUI
+sg.theme('DarkAmber')
 
+#Main Window Layout
+main_layout = [
+    [sg.Button('Open File'), sg.Button('Exit')],
+    [sg.Image(key='-IMAGE-', size=(704,576), pad=(0,0), expand_x=True, expand_y=True)]
+]
 
+# Create the Main Window
+main_window = sg.Window('Window Title', main_layout, finalize=True, resizable=False, size=(704,650))
 
+#Set the place holder image into the image
+main_window['-IMAGE-'].update(data=placeholder_bytes)
 
+# Render Menu
+while True:
+    event, values = main_window.read()
+    match event:
+        #Render "Open File" dialog box
+        case 'Open File':
+            open_layout = [
+                [sg.Text('Enter File Path: '), sg.InputText(default_text="test samples/Q2/")],
+                [sg.Button('Submit'), sg.Text("Image failed to load!", key="-ERROR_TEXT-", visible = False)],
+                [sg.Text("or Select An Image: ")],
+                [sg.Button('image1.tif', pad=(5,0)),sg.Button('image2.tif'),sg.Button('image3.tif'), sg.Button('Cancel', pad=((100, 0), 0))]
+            ]
+            open_file_window = sg.Window('Open File', open_layout, finalize=True, size=(400, 125), keep_on_top=True)
+            while True:
+                open_event, values = open_file_window.read()
+                match open_event:
 
-
-
-
-
-
-
-        print("\n")
-
-        
-
-    '''
-    Value/Offset
-    To save time and space the Value Offset contains the Value instead of pointing to
-    the Value if and only if the Value fits into 4 bytes. If the Value is shorter than 4
-    bytes, it is left-justified within the 4-byte Value Offset, i.e., stored in the lowernumbered bytes. Whether the Value fits within 4 bytes is determined by the Type
-    and Count of the field.
-    '''     
-
-
-
-
-
-    '''
-    tif_data = tifffile.imread(file_name)
-
-    print(f"Size: {tif_data.nbytes}")
-    
-    # Display the image using matplotlib
-    plt.imshow(tif_data, cmap='gray')  # Use 'gray' colormap for grayscale images
-    plt.title('Your TIFF Image')
-    plt.show()
-    '''
-
-    '''
-    # Create a new image with a white background
-    width, height = 500, 500
-    image = Image.new("RGB", (width, height), "white")
-
-    # Get the drawing context
-    draw = ImageDraw.Draw(image)
-
-    # Draw a red pixel at coordinates (100, 100)
-    draw.point((100, 100), fill=(255, 0, 0))  # RGB color: (255, 0, 0) is red
-
-    # Draw a green pixel at coordinates (200, 200)
-    draw.point((200, 200), fill=(0, 255, 0))  # RGB color: (0, 255, 0) is green
-    image.show()
-    '''
-
-    '''
-    sg.theme('DarkAmber')   # Add a touch of color
-    # All the stuff inside your window.
-    layout = [  [sg.Text('Some text on Row 1')],
-                [sg.Text('Enter something on Row 2'), sg.InputText()],
-                [sg.Button('Ok'), sg.Button('Cancel')] ]
-    
-
-
-    # Create the Window
-    window = sg.Window('Window Title', layout)
-    # Event Loop to process "events" and get the "values" of the inputs
-    while True:
-        event, values = window.read()
-        if event == sg.WIN_CLOSED or event == 'Cancel': # if user closes window or clicks cancel
+                    case 'Submit':
+                        try:
+                            im = read_image(values[0])
+                            image_bytes = io.BytesIO()
+                            im.save(image_bytes, format='PNG')
+                            image_bytes = image_bytes.getvalue()
+                            main_window['-IMAGE-'].update(data=image_bytes)
+                            break
+                        except IOError as e:
+                            open_file_window['-ERROR_TEXT-'].update(visible=True)                    
+                    case 'Cancel':
+                        break
+                    case sg.WIN_CLOSED:                        
+                        break
+                    #Enable shortcut buttons
+                    case 'image1.tif':
+                        im = read_image("test samples/Q2/image1.tif")
+                        image_bytes = io.BytesIO()
+                        im.save(image_bytes, format='PNG')
+                        image_bytes = image_bytes.getvalue()
+                        main_window['-IMAGE-'].update(data=image_bytes)
+                        break
+                    case 'image2.tif':
+                        im = read_image("test samples/Q2/image2.tif")
+                        image_bytes = io.BytesIO()
+                        im.save(image_bytes, format='PNG')
+                        image_bytes = image_bytes.getvalue()
+                        main_window['-IMAGE-'].update(data=image_bytes)
+                        break
+                    case 'image3.tif':
+                        im = read_image("test samples/Q2/image3.tif")
+                        image_bytes = io.BytesIO()
+                        im.save(image_bytes, format='PNG')
+                        image_bytes = image_bytes.getvalue()
+                        main_window['-IMAGE-'].update(data=image_bytes)
+                        break
+            open_file_window.close()
+        case 'Exit':
             break
-        print('You entered ', values[0])
-
-    window.close()
-    '''
-except IOError as e:
-    print("Error loading file: " + file_name)
-
+        case sg.WIN_CLOSED:
+            break
