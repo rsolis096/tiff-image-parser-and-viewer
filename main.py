@@ -1,8 +1,7 @@
 #PySimpleGUI, numpy, scipy, and matplotlib
 #Python version 3.11.6 64 bit
 #pip install pysimplegui                #needed
-#pip install pillow
-#pip install tifffile                   #needed
+#pip install pillow                     #needed
 #python -m pip install -U matplotlib    #needed
 
 TYPES = {
@@ -23,10 +22,9 @@ TYPES = {
 
 import PySimpleGUI as sg
 import numpy as np
-from PIL import Image, ImageTk, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 import matplotlib.pyplot as plt
 import io
-import base64
 
 
 
@@ -108,8 +106,6 @@ def read_image(file_name):
         #Initialize rgb_values list (holds lists of [r,g,b] values)
         rgb_values = []
 
-        pixel_rows = []
-
         #The method of file reading flips the image in a weird way. Swapping dimensions then transposing the image fixes this
         temp = width
         width = height
@@ -183,7 +179,7 @@ main_layout = [
 ]
 
 # Create the Main Window
-main_window = sg.Window('Window Title', main_layout, finalize=True, resizable=False, size=(704,650))
+main_window = sg.Window('Assignment 1 Question 2', main_layout, finalize=True, resizable=False, size=(704,650))
 
 #Set the place holder image into the image
 main_window['-IMAGE-'].update(data=placeholder_bytes)
